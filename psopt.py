@@ -1,4 +1,5 @@
 from scipy.optimize import basinhopping, minimize
+import numpy as np
 import inspect
 
 class Optimizer(object):
@@ -144,6 +145,9 @@ class Optimizer(object):
         if not self._bounds:
             self._bounds = [(-np.inf,np.inf) for p in self._params]
         self._bounds[idx]=bounds
+
+    def reset_bounds(self):
+        self._bounds = None
         
     def set_cost_func(self,f):
         self._cost_func_all_params = f
@@ -170,8 +174,109 @@ class Optimizer(object):
     def _minimize(self):
         return minimize(self._cost_func, self.free_param_vals, bounds=self.free_bounds)
     
-
     def optimize(self):
         ret = self._optimize_caller()
         self._ret = ret
         return self.fitted_param_dict
+
+
+class FunctionOptimizer(Optimizer):
+    def __init__(self,*args,**kwargs):
+        try:
+            f = kwargs.pop('func')
+        except KeyError:
+            f = None
+            
+        try:
+            params = kwargs.pop('params')
+        except KeyError:
+            params = None
+                    
+
+        super().__init__(*args,**kwargs)
+        self._dist_func = self._default_dist
+        self.weights = []
+        self.xm = []
+        self.ym = []
+        if f:
+            self.set_objective_function(f,params=params)
+        
+    def _default_dist(self, ym, yt, weights=None):
+        """
+        Distance measure between two vectors ym measured and yt trial
+        """
+        return sum((ym - yt)**2)
+    
+    @property
+    def residuals(self):
+        yt = self._objective_function(self.xm, *self.fitted_params)
+        return yt-self.ym
+    
+    def _cost_func_all_params(self, *args):
+        yt = self._objective_function(self.xm, *args)
+        return self._dist_func(self.ym, yt, self.weights)
+        
+    def set_objective_function(self,f,independent_var=None,params=None):
+        """
+        set the objective function:
+        the function to be fitted
+        
+        Must have the form:
+        
+        f(x, p1=X1, p2=X2,...)
+        
+        and return y with length similar to x
+        
+        p1, p2, etc. are the parameters
+        """
+        self._objective_function = f
+        if params is None:
+            params=[]
+            for par in inspect.signature(f).parameters.values():
+                if independent_var is None:
+                    independent_var = par.name
+                    continue
+                if par.default == inspect.Parameter.empty:
+                    params.append((par.name,None))
+                else:
+                    params.append((par.name,par.default))
+
+        
+        for par,val in params:
+            if par == independent_var:
+                continue
+            if par is None:
+                self.set_param(par)
+            else:
+                self.set_param(par,val)
+    
+    def set_dist_func(self,f):
+        """
+        set the function to calculate the distance between two vectors
+        
+        f(ym, yt, weights)
+        
+        should return a metric between ym and yt weighted by the weighting vector
+        """
+        self._dist_func = f
+        
+    def optimize(self, y, x):
+        """
+        Optimize parameters so that y-f(x) has minimal residues
+        """
+        self.xm = np.asarray(x)
+        self.ym = np.asarray(y)
+        ret = self._optimize_caller()
+        self._ret = ret
+        return self.fitted_param_dict
+    
+    def predict(self, x):
+        return self._objective_function(x, *self.fitted_params)
+    
+    def plot(self):
+        fig,ax = subplots(1)
+        plot(self.xm,self.ym,'.',alpha=.2,label='obs.')
+        plot(self.xm,self._objective_function(self.xm,*self._param_vals),label='init')
+        plot(self.xm,self.predict(self.xm),label='fit')
+        legend()
+        return ax
