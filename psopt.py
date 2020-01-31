@@ -14,6 +14,7 @@ class Optimizer(object):
         self._bounds=None
         if init_params:
             self.set_params(init_params)
+        self.constraints = ()
         
     
     @property
@@ -38,9 +39,13 @@ class Optimizer(object):
             self._params.append(par)
             self._param_vals.append(default_val)
             self._param_mask.append(True)
+            if self._bounds:
+                self.bounds.append((-np.inf,np.inf))
         self.switch_fitting(par,fit)
         if bounds:
             self.set_bounds(par,bounds)
+        
+         
             
     def apply_mask_dict(self,mask_dict):
         for k,v in mask_dict.items():
@@ -144,7 +149,12 @@ class Optimizer(object):
             return
         if not self._bounds:
             self._bounds = [(-np.inf,np.inf) for p in self._params]
-        self._bounds[idx]=bounds
+        try:
+            self._bounds[idx]=bounds
+        except IndexError:
+            for ii in range(len(self._bounds),idx-1):
+                self._bounds.append((-np.inf,np.inf))
+            self.bounds.append(bounds)
 
     def reset_bounds(self):
         self._bounds = None
@@ -169,10 +179,10 @@ class Optimizer(object):
         return self._cost_func_all_params(*all_params)
     
     def _basinhopping(self):
-        return basinhopping(self._cost_func, self.free_param_vals)
+        return basinhopping(self._cost_func, self.free_param_vals,minimizer_kwargs={"constraints":self.constraints,"bounds":self.free_bounds})
                 
     def _minimize(self):
-        return minimize(self._cost_func, self.free_param_vals, bounds=self.free_bounds)
+        return minimize(self._cost_func, self.free_param_vals, bounds=self.free_bounds, constraints=self.constraints)
     
     def optimize(self):
         ret = self._optimize_caller()
