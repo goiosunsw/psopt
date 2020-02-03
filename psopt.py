@@ -31,7 +31,7 @@ class Optimizer(object):
             self._param_vals.append(vv)
             self._param_mask.append(True)
             
-    def set_param(self,par,default_val=0., bounds=None,fit=True):
+    def set_param(self,par,default_val=0., bounds=None,fit=None):
         try:
             idx=self._params.index(par)
             self._param_vals[idx]=default_val
@@ -41,7 +41,8 @@ class Optimizer(object):
             self._param_mask.append(True)
             if self._bounds:
                 self.bounds.append((-np.inf,np.inf))
-        self.switch_fitting(par,fit)
+        if fit is not None:
+            self.switch_fitting(par,fit)
         if bounds:
             self.set_bounds(par,bounds)
         
