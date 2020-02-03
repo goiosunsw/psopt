@@ -1,6 +1,7 @@
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.optimize import LinearConstraint
 from psopt import FunctionOptimizer
+import numpy as np
 
 
 def nuarmax(x,y,rad=1.0):
@@ -111,9 +112,13 @@ class SplineOptimizer(FunctionOptimizer):
             yi+=1
         self._control_xy_to_spl(xc,yc)
             
+    def obj_fun_wrap(self, x, geom_func):
+        return geom_func(x)
+    
     def fpred(self,x,*parlist):
         self._param_list_to_spl(parlist)
-        return(self.spl(x))
+        y = self.obj_fun_wrap(x, self.spl)
+        return(y)
             
     def fit_spline(self):
         self.optimize(self.ym,self.xm)#,constraints=self.constraints)
