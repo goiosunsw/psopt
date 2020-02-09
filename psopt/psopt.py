@@ -3,11 +3,8 @@ import numpy as np
 import inspect
 
 class Optimizer(object):
-    def __init__(self, method=None, init_params=None):
-        if method == 'basinhopping':
-            self._optimize_caller = self._basinhopping
-        else:
-            self._optimize_caller = self._minimize
+    def __init__(self, method="minimize", init_params=None):
+        self.set_method(method)
         self._params = []
         self._param_vals = []
         self._param_mask=[]
@@ -15,8 +12,18 @@ class Optimizer(object):
         if init_params:
             self.set_params(init_params)
         self.constraints = ()
+        self._take_step = None
+        self.minimize_method = None
         
     
+    def set_method(self, method):
+        if method == 'minimize':
+            self._optimize_caller = self._minimize
+        elif method == 'basinhopping':
+            self._optimize_caller = self._basinhopping
+        else: 
+            raise (ValueError, "Not implemented. 'method' must be one of 'minimize' or 'basinhopping' ")
+            
     @property
     def params(self):
         return {k:v for k,v in zip(self._params,self._param_vals)}
@@ -40,7 +47,7 @@ class Optimizer(object):
             self._param_vals.append(default_val)
             self._param_mask.append(True)
             if self._bounds:
-                self.bounds.append((-np.inf,np.inf))
+                self._bounds.append((-np.inf,np.inf))
         if fit is not None:
             self.switch_fitting(par,fit)
         if bounds:
@@ -93,7 +100,10 @@ class Optimizer(object):
         
     @property
     def bounds(self):
-        return self._bounds
+        try:
+            return {k:v for k,v in zip(self._params, self._bounds)}
+        except TypeError:
+            return {k:(-np.inf,np.inf) for k in self._params}
 
     @bounds.setter
     def bounds(self, intervals):
@@ -110,6 +120,10 @@ class Optimizer(object):
         except TypeError:
             logging.warn('Boundaries not set')
             self._bounds = None
+
+    def set_bound_dict(self, bound_dict):
+        for param, bounds in bound_dict.items():
+            self.set_bounds(param, bounds)
             
     @property
     def free_bounds(self):
@@ -155,7 +169,7 @@ class Optimizer(object):
         except IndexError:
             for ii in range(len(self._bounds),idx-1):
                 self._bounds.append((-np.inf,np.inf))
-            self.bounds.append(bounds)
+            self._bounds.append(bounds)
 
     def reset_bounds(self):
         self._bounds = None
@@ -180,10 +194,13 @@ class Optimizer(object):
         return self._cost_func_all_params(*all_params)
     
     def _basinhopping(self):
-        return basinhopping(self._cost_func, self.free_param_vals,minimizer_kwargs={"constraints":self.constraints,"bounds":self.free_bounds})
-                
+        return basinhopping(self._cost_func, self.free_param_vals, take_step=self._take_step,
+                            minimizer_kwargs={"constraints":self.constraints,"bounds":self.free_bounds}) 
+                      
     def _minimize(self):
-        return minimize(self._cost_func, self.free_param_vals, bounds=self.free_bounds, constraints=self.constraints)
+        return minimize(self._cost_func, self.free_param_vals,
+                        bounds=self.free_bounds, constraints=self.constraints,
+                        method=self.minimize_method)
     
     def optimize(self):
         ret = self._optimize_caller()
